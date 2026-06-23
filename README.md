@@ -3,46 +3,64 @@
 Mac のホイールスクロールの加速を無効化し、1ノッチあたりのスクロール量を固定値にする常駐ツール。
 トラックパッド / Magic Mouse の連続スクロールには影響しません。
 
+アクセシビリティ権限が必要ですが、`.app` バンドルとして「Scroll Fixer」という独立したアプリ名で
+権限一覧に表示されます（Terminal 経由ではありません）。
+
 ## ビルド
 
 ```sh
-swiftc main.swift -o scroll-fixer
+./build.sh
 ```
+
+`main.swift` をコンパイルし、ad-hoc 署名済みの `ScrollFixer.app` を生成します。
 
 ## 実行
 
 ```sh
-./scroll-fixer
+open ScrollFixer.app
 ```
 
-初回はイベントタップの作成に失敗するので、
-「システム設定 → プライバシーとセキュリティ → アクセシビリティ」で
-実行元（Terminal など）に権限を付与してから再実行してください。
+初回はイベントタップの作成に失敗します。
+「システム設定 → プライバシーとセキュリティ → アクセシビリティ」で **Scroll Fixer** に権限を付与し、
+再度起動してください。
+
+> **注意（ad-hoc 署名）:** `build.sh` の署名はビルドごとに変わるため、
+> 再ビルドするとアクセシビリティ権限を付与し直す必要があります。
+> （再ビルドしても権限を保持したい場合は、自己署名証明書または Developer ID での署名が必要です。）
+
+## 終了
+
+```sh
+killall scroll-fixer
+```
 
 ## 設定
 
-[main.swift](main.swift) 冒頭の `linesPerNotch` で 1 ノッチあたりの行数を変更できます（既定: 3）。
-変更後は再ビルドしてください。
+[main.swift](main.swift) 冒頭の `linesPerNotch` で 1 ノッチあたりの行数を変更できます（既定: 6）。
+変更後は `./build.sh` で再ビルドしてください。
 
 ## ログイン時に自動起動する場合
 
-launchd の LaunchAgent として登録します（例）:
+1. ビルドした `ScrollFixer.app` を `/Applications` にコピーします:
+
+   ```sh
+   cp -R ScrollFixer.app /Applications/
+   ```
+
+2. 同梱の LaunchAgent を登録します:
+
+   ```sh
+   cp local.scroll-fixer.plist ~/Library/LaunchAgents/
+   launchctl load ~/Library/LaunchAgents/local.scroll-fixer.plist
+   ```
+
+## 自動起動をやめる場合
 
 ```sh
-cat > ~/Library/LaunchAgents/local.scroll-fixer.plist <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key><string>local.scroll-fixer</string>
-    <key>ProgramArguments</key>
-    <array><string>/usr/local/bin/scroll-fixer</string></array>
-    <key>RunAtLoad</key><true/>
-    <key>KeepAlive</key><true/>
-</dict>
-</plist>
-EOF
-launchctl load ~/Library/LaunchAgents/local.scroll-fixer.plist
+launchctl unload ~/Library/LaunchAgents/local.scroll-fixer.plist
 ```
 
-この場合はバイナリ（`/usr/local/bin/scroll-fixer`）自体にアクセシビリティ権限を付与してください。
+[local.scroll-fixer.plist](local.scroll-fixer.plist) は
+`/Applications/ScrollFixer.app/Contents/MacOS/scroll-fixer` を起動します。
+別の場所に置く場合はパスを書き換えてください。
+この場合も **Scroll Fixer** にアクセシビリティ権限を付与してください。
