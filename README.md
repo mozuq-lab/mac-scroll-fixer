@@ -6,27 +6,29 @@ Mac のホイールスクロールの加速を無効化し、1ノッチあたり
 アクセシビリティ権限が必要ですが、`.app` バンドルとして「Scroll Fixer」という独立したアプリ名で
 権限一覧に表示されます（Terminal 経由ではありません）。
 
-## ビルド
+## 動作要件
 
-```sh
-./build.sh
-```
+- macOS 13 (Ventura) 以降
+- Apple シリコン / Intel のどちらの Mac でも動きます
 
-`main.swift` をコンパイルし、ad-hoc 署名済みの `ScrollFixer.app` を生成します。
+## インストールと起動
 
-## 実行
+1. `ScrollFixer.app` を「アプリケーション」フォルダに入れて、ダブルクリックで起動します。
+2. 初回はアクセシビリティ権限を求めるダイアログが出ます。「システム設定を開く」を選び、
+   「プライバシーとセキュリティ」>「アクセシビリティ」で **Scroll Fixer** をオンにします。
+   オンにすると、起動し直さなくても数秒以内に効き始めます。
 
-```sh
-open ScrollFixer.app
-```
+画面には何も表示されません（Dock にもメニューバーにも出ません）。
 
-初回はイベントタップの作成に失敗します。
-「システム設定 → プライバシーとセキュリティ → アクセシビリティ」で **Scroll Fixer** に権限を付与し、
-再度起動してください。
+### ログイン時の自動起動
 
-> **注意（ad-hoc 署名）:** `build.sh` の署名はビルドごとに変わるため、
-> 再ビルドするとアクセシビリティ権限を付与し直す必要があります。
-> （再ビルドしても権限を保持したい場合は、自己署名証明書または Developer ID での署名が必要です。）
+「アプリケーション」フォルダから初めて起動したときに、Scroll Fixer は自分をログイン項目に登録します
+（macOS が「ログイン項目が追加されました」と通知します）。
+
+自動起動が不要な場合は、「システム設定」>「一般」>「ログイン項目と機能拡張」（macOS 13/14 では「ログイン項目」）で Scroll Fixer をオフにしてください。
+一度オフにすると、Scroll Fixer が登録し直すことはありません。
+
+ビルドしたフォルダなど、「アプリケーション」フォルダ以外から起動した場合は登録しません。
 
 ## 終了
 
@@ -34,33 +36,64 @@ open ScrollFixer.app
 killall scroll-fixer
 ```
 
+アクティビティモニタで `scroll-fixer` を終了しても同じです。
+
 ## 設定
 
-[main.swift](main.swift) 冒頭の `linesPerNotch` で 1 ノッチあたりの行数を変更できます（既定: 6）。
-変更後は `./build.sh` で再ビルドしてください。
-
-## ログイン時に自動起動する場合
-
-1. ビルドした `ScrollFixer.app` を `/Applications` にコピーします:
-
-   ```sh
-   cp -R ScrollFixer.app /Applications/
-   ```
-
-2. 同梱の LaunchAgent を登録します:
-
-   ```sh
-   cp local.scroll-fixer.plist ~/Library/LaunchAgents/
-   launchctl load ~/Library/LaunchAgents/local.scroll-fixer.plist
-   ```
-
-## 自動起動をやめる場合
+1 ノッチあたりのスクロール量は、`defaults` コマンドで変えられます。変更後は Scroll Fixer を起動し直してください。
 
 ```sh
-launchctl unload ~/Library/LaunchAgents/local.scroll-fixer.plist
+defaults write com.mozuq-lab.ScrollFixer linesPerNotch -int 6   # 1 ノッチあたりの行数（既定: 10）
+killall scroll-fixer; open -a ScrollFixer
 ```
 
-[local.scroll-fixer.plist](local.scroll-fixer.plist) は
-`/Applications/ScrollFixer.app/Contents/MacOS/scroll-fixer` を起動します。
-別の場所に置く場合はパスを書き換えてください。
-この場合も **Scroll Fixer** にアクセシビリティ権限を付与してください。
+| キー | 内容 | 既定 | 範囲 |
+| --- | --- | --- | --- |
+| `linesPerNotch` | 1 ノッチあたりのスクロール行数 | 10 | 1〜100 |
+| `pixelsPerLine` | 1 行あたりのピクセル数（ピクセル単位でスクロールするアプリ向け） | 10 | 1〜100 |
+
+既定に戻すには `defaults delete com.mozuq-lab.ScrollFixer linesPerNotch` を実行します。
+
+## ビルド
+
+```sh
+./build.sh
+```
+
+`main.swift` をコンパイルし、署名済みの `ScrollFixer.app` を生成します。
+Apple シリコンと Intel の両方で動くユニバーサル版になります。
+対応する macOS は `Info.plist` の `LSMinimumSystemVersion` に合わせます。
+
+署名には、キーチェーンにある証明書を次の順に探して使います。
+
+| 順 | 証明書 | 用途 |
+| --- | --- | --- |
+| 1 | 環境変数 `SIGN_IDENTITY` で指定したもの | 証明書の名前の一部か SHA-1 ハッシュで指定する。`-` なら ad-hoc 署名 |
+| 2 | Developer ID Application | 他の Mac に配る場合。公証にはこれが必要（有料の Apple Developer Program） |
+| 3 | Apple Development | 自分の Mac だけで使う場合（無料の Apple ID で作れる） |
+| 4 | なし（ad-hoc 署名） | 証明書がない場合 |
+
+> **注意（ad-hoc 署名）:** ad-hoc 署名はビルドごとに変わるため、
+> 再ビルドするとアクセシビリティ権限を付与し直す必要があります。
+> 証明書で署名していれば、再ビルドしても権限は保持されます。
+
+## 他の Mac に配る（公証）
+
+他の Mac で開くには、Developer ID Application 証明書で署名し、Apple の公証を受ける必要があります。
+
+最初に 1 回だけ、公証用の認証情報をキーチェーンに保存します。パスワードは入力欄で聞かれるので、
+appleid.apple.com で作った **App 用パスワード** を入力します。
+
+```sh
+xcrun notarytool store-credentials meetrec-notary --apple-id <Apple ID> --team-id <チーム ID>
+```
+
+その後は、次のコマンドでビルドから公証までをまとめて実行できます（数分かかります）。
+
+```sh
+./build.sh --notarize
+```
+
+署名、公証の申請、公証結果の埋め込み（stapler）、Gatekeeper での確認を順に行い、
+配布用の `ScrollFixer.zip` を作ります。
+キーチェーンプロファイルの名前が `meetrec-notary` 以外の場合は、`NOTARY_PROFILE` 環境変数で指定します。

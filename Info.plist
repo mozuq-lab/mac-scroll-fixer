@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleIdentifier</key><string>local.scroll-fixer</string>
+    <key>CFBundleIdentifier</key><string>com.mozuq-lab.ScrollFixer</string>
     <key>CFBundleName</key><string>Scroll Fixer</string>
     <key>CFBundleDisplayName</key><string>Scroll Fixer</string>
     <key>CFBundleExecutable</key><string>scroll-fixer</string>
@@ -12,6 +12,7 @@
     <key>CFBundleVersion</key><string>1</string>
     <!-- Dock に出さず、メニューバーにも常駐表示しない純粋なバックグラウンドエージェント -->
     <key>LSUIElement</key><true/>
-    <key>LSMinimumSystemVersion</key><string>11.0</string>
+    <!-- ログイン項目の登録（SMAppService）に macOS 13 が必要。build.sh もこの値を対象にビルドする -->
+    <key>LSMinimumSystemVersion</key><string>13.0</string>
 </dict>
 </plist>
