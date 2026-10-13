@@ -18,7 +18,7 @@ Mac のホイールスクロールの加速を無効化し、1ノッチあたり
    「プライバシーとセキュリティ」>「アクセシビリティ」で **Scroll Fixer** をオンにします。
    オンにすると、起動し直さなくても数秒以内に効き始めます。
 
-画面には何も表示されません（Dock にもメニューバーにも出ません）。
+起動するとメニューバーにマウスのアイコンが出ます（Dock には出ません）。
 
 ### ログイン時の自動起動
 
@@ -32,18 +32,19 @@ Mac のホイールスクロールの加速を無効化し、1ノッチあたり
 
 ## 終了
 
-```sh
-killall scroll-fixer
-```
-
-アクティビティモニタで `scroll-fixer` を終了しても同じです。
+メニューバーのアイコンから「Scroll Fixer を終了」を選びます。
+ターミナルからは `killall scroll-fixer` で終了できます。
 
 ## 設定
 
-1 ノッチあたりのスクロール量は、`defaults` コマンドで変えられます。変更後は Scroll Fixer を起動し直してください。
+1 ノッチあたりのスクロール量は、メニューバーのアイコンから選べます（1〜20 行）。
+選んだ値はすぐに効き、次回の起動にも引き継がれます。
+
+メニューにない値にしたい場合や、`pixelsPerLine` を変えたい場合は、`defaults` コマンドを使います。
+変更後は Scroll Fixer を起動し直してください。
 
 ```sh
-defaults write com.mozuq-lab.ScrollFixer linesPerNotch -int 6   # 1 ノッチあたりの行数（既定: 10）
+defaults write com.mozuq-lab.ScrollFixer linesPerNotch -int 7   # 1 ノッチあたりの行数（既定: 10）
 killall scroll-fixer; open -a ScrollFixer
 ```
 

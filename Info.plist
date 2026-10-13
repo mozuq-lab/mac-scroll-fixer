@@ -10,7 +10,7 @@
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key><string>1</string>
-    <!-- Dock に出さず、メニューバーにも常駐表示しない純粋なバックグラウンドエージェント -->
+    <!-- Dock には出さず、メニューバーのアイコンだけで操作するエージェント -->
     <key>LSUIElement</key><true/>
     <!-- ログイン項目の登録（SMAppService）に macOS 13 が必要。build.sh もこの値を対象にビルドする -->
     <key>LSMinimumSystemVersion</key><string>13.0</string>
