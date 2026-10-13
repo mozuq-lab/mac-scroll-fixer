@@ -5,8 +5,8 @@ import Foundation
 import ServiceManagement
 
 // ── 設定 ─────────────────────────────────────────────
-// 既定値はここで決める。linesPerNotch はメニューバーから変えられる（すぐに反映して保存する）。
-// どちらのキーも次のように上書きできる（Scroll Fixer の再起動後に反映）:
+// 既定値はここで決める。linesPerNotch と acceleration はメニューバーから変えられる（すぐに反映して保存する）。
+// どのキーも次のように上書きできる（Scroll Fixer の再起動後に反映）:
 //   defaults write com.mozuq-lab.ScrollFixer linesPerNotch -int 6
 func setting(_ key: String, default value: Int64, range: ClosedRange<Int64>) -> Int64 {
     guard UserDefaults.standard.object(forKey: key) != nil else { return value }
@@ -20,28 +20,63 @@ func setting(_ key: String, default value: Int64, range: ClosedRange<Int64>) -> 
 
 // 1ノッチあたりのスクロール行数
 let linesPerNotchKey = "linesPerNotch"
-let defaultLinesPerNotch: Int64 = 10
+let defaultLinesPerNotch: Int64 = 3
 var linesPerNotch = setting(linesPerNotchKey, default: defaultLinesPerNotch, range: 1...100)
 // 1行あたりのピクセル数（macOS の標準的な換算は 10px/行）
 let pixelsPerLine = setting("pixelsPerLine", default: 10, range: 1...100)
+// 速く回したときの加速の強さ（accelerationLevels の番号。0 は加速なし）
+let accelerationKey = "acceleration"
+let defaultAcceleration: Int64 = 2
+var acceleration = setting(accelerationKey, default: defaultAcceleration, range: 0...3)
 // ─────────────────────────────────────────────────────
+
+// 加速の強さごとの名前と、速く回したときの上限倍率
+let accelerationLevels: [(title: String, maxMultiplier: Double)] = [
+    ("なし", 1), ("弱", 2), ("中", 3), ("強", 4),
+]
+// ノッチの間隔がこれ以上なら加速しない（1 倍）
+let slowNotchInterval: TimeInterval = 0.150
+// ノッチの間隔がこれ以下なら上限の倍率にする。その間は間隔に比例して倍率を上げる
+let fastNotchInterval: TimeInterval = 0.030
 
 var eventTap: CFMachPort?
 
-// 指定軸の加速されたデルタを固定値に置き換える（符号＝向きは維持）。
+// 軸ごとに、直前のノッチの時刻と向きを覚えておく
+struct NotchHistory {
+    var time: TimeInterval = -.infinity
+    var sign: Int64 = 0
+}
+var verticalHistory = NotchHistory()
+var horizontalHistory = NotchHistory()
+
+// 直前のノッチからの間隔で倍率を決める。向きが変わったら 1 倍に戻す。
+// CGEvent のタイムスタンプは Apple シリコンではナノ秒ではないため、受け取った時刻で測る
+func accelerationMultiplier(sign: Int64, history: inout NotchHistory) -> Double {
+    let now = ProcessInfo.processInfo.systemUptime
+    defer { history = NotchHistory(time: now, sign: sign) }
+    let maxMultiplier = accelerationLevels[Int(acceleration)].maxMultiplier
+    guard sign == history.sign, maxMultiplier > 1 else { return 1 }
+    let speed = (slowNotchInterval - (now - history.time)) / (slowNotchInterval - fastNotchInterval)
+    return 1 + (maxMultiplier - 1) * min(max(speed, 0), 1)
+}
+
+// 指定軸の macOS が加速したデルタを、固定値に独自の倍率を掛けた値に置き換える（符号＝向きは維持）。
 // 行単位・固定小数点・ピクセル単位の 3 フィールドを一貫した値に揃える。
 // アプリによって参照するフィールドが異なるため、ゼロにすると
 // ピクセル系を読むアプリ（Chrome 等）でスクロールが効かなくなる。
+// 行単位は整数に丸めるが、固定小数点とピクセル単位には倍率をそのまま反映する。
 func flattenDelta(_ event: CGEvent,
                   delta: CGEventField,
                   fixedPt: CGEventField,
-                  point: CGEventField) {
+                  point: CGEventField,
+                  history: inout NotchHistory) {
     let value = event.getIntegerValueField(delta)
     guard value != 0 else { return }
     let sign: Int64 = value > 0 ? 1 : -1
-    event.setIntegerValueField(delta, value: sign * linesPerNotch)
-    event.setDoubleValueField(fixedPt, value: Double(sign * linesPerNotch))
-    event.setIntegerValueField(point, value: sign * linesPerNotch * pixelsPerLine)
+    let lines = Double(sign * linesPerNotch) * accelerationMultiplier(sign: sign, history: &history)
+    event.setIntegerValueField(delta, value: Int64(lines.rounded()))
+    event.setDoubleValueField(fixedPt, value: lines)
+    event.setIntegerValueField(point, value: Int64((lines * Double(pixelsPerLine)).rounded()))
 }
 
 func scrollCallback(proxy: CGEventTapProxy,
@@ -66,13 +101,15 @@ func scrollCallback(proxy: CGEventTapProxy,
     flattenDelta(event,
                  delta: .scrollWheelEventDeltaAxis1,
                  fixedPt: .scrollWheelEventFixedPtDeltaAxis1,
-                 point: .scrollWheelEventPointDeltaAxis1)
+                 point: .scrollWheelEventPointDeltaAxis1,
+                 history: &verticalHistory)
 
     // 横方向
     flattenDelta(event,
                  delta: .scrollWheelEventDeltaAxis2,
                  fixedPt: .scrollWheelEventFixedPtDeltaAxis2,
-                 point: .scrollWheelEventPointDeltaAxis2)
+                 point: .scrollWheelEventPointDeltaAxis2,
+                 history: &horizontalHistory)
 
     return Unmanaged.passUnretained(event)
 }
@@ -111,6 +148,7 @@ final class MenuController: NSObject, NSMenuDelegate {
     // 権限がないときだけ表示する項目
     var permissionItems: [NSMenuItem] = []
     var linesItems: [NSMenuItem] = []
+    var accelerationItems: [NSMenuItem] = []
 
     // 項目は起動時に一度だけ作る。メニューを開いている最中に作り直すと、
     // VoiceOver などが参照している項目が消えて押せなくなるため
@@ -142,6 +180,20 @@ final class MenuController: NSObject, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        menu.addItem(withTitle: "速く回したときの加速", action: nil, keyEquivalent: "")
+        for (level, (name, maxMultiplier)) in accelerationLevels.enumerated() {
+            var notes = level == 0 ? [] : ["最大 \(Int(maxMultiplier)) 倍"]
+            if level == defaultAcceleration { notes.append("既定") }
+            let title = notes.isEmpty ? name : "\(name)（\(notes.joined(separator: "、"))）"
+            let item = menu.addItem(withTitle: title,
+                                    action: #selector(selectAcceleration(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = level
+            item.indentationLevel = 1
+            accelerationItems.append(item)
+        }
+
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Scroll Fixer を終了",
                      action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
@@ -151,12 +203,18 @@ final class MenuController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         for item in permissionItems { item.isHidden = eventTap != nil }
         for item in linesItems { item.state = Int64(item.tag) == linesPerNotch ? .on : .off }
+        for item in accelerationItems { item.state = Int64(item.tag) == acceleration ? .on : .off }
     }
 
     // 選んだ値は次のスクロールから効き、次回の起動にも引き継ぐ
     @objc func selectLinesPerNotch(_ sender: NSMenuItem) {
         linesPerNotch = Int64(sender.tag)
         UserDefaults.standard.set(sender.tag, forKey: linesPerNotchKey)
+    }
+
+    @objc func selectAcceleration(_ sender: NSMenuItem) {
+        acceleration = Int64(sender.tag)
+        UserDefaults.standard.set(sender.tag, forKey: accelerationKey)
     }
 
     @objc func openAccessibilitySettings() {
